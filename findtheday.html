@@ -1,0 +1,885 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Flashlight Search: Days of the Week</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Noto+Sans+TC:wght@500;700;900&display=swap" rel="stylesheet">
+    
+    <style>
+        * {
+            user-select: none;
+            -webkit-user-select: none;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+        html, body {
+            width: 100vw;
+            height: 100dvh;
+            margin: 0;
+            padding: 0;
+            font-family: 'Fredoka', 'Noto Sans TC', sans-serif;
+            background-color: #020617;
+            overflow: hidden;
+            touch-action: none;
+        }
+        .font-eng {
+            font-family: 'Fredoka', sans-serif;
+        }
+        .font-zh {
+            font-family: 'Noto Sans TC', sans-serif;
+        }
+
+        /* Portrait Orientation Prompt Overlay for Mobile */
+        #portrait-prompt {
+            display: none;
+        }
+        @media (orientation: portrait) and (max-width: 767px) {
+            #portrait-prompt:not(.dismissed) {
+                display: flex;
+            }
+        }
+
+        /* Flashlight darkness overlay */
+        #darkness-overlay {
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            z-index: 30;
+            background: radial-gradient(
+                circle var(--beam-size, 125px) at var(--mouse-x, -500px) var(--mouse-y, -500px),
+                rgba(255, 255, 230, 0.08) 0%,
+                rgba(0, 0, 0, 0.35) 55%,
+                rgba(0, 0, 0, 0.96) 82%,
+                #000000 100%
+            );
+            transition: background 0.02s linear;
+        }
+
+        /* Flashlight ring glow */
+        #beam-ring {
+            position: absolute;
+            width: calc(var(--beam-size, 125px) * 1.9);
+            height: calc(var(--beam-size, 125px) * 1.9);
+            left: var(--mouse-x, -500px);
+            top: var(--mouse-y, -500px);
+            transform: translate(-50%, -50%);
+            border-radius: 50%;
+            border: 2px solid rgba(253, 224, 71, 0.25);
+            box-shadow: 0 0 35px rgba(253, 224, 71, 0.2), inset 0 0 25px rgba(253, 224, 71, 0.15);
+            pointer-events: none;
+            z-index: 31;
+        }
+
+        /* Responsive Tear-off Chinese wall calendar card */
+        .calendar-card {
+            position: absolute;
+            width: var(--card-w, 124px);
+            height: var(--card-h, 140px);
+            background: #ffffff;
+            border-radius: clamp(10px, 2vw, 16px);
+            box-shadow: 0 8px 20px rgba(0,0,0,0.85), 0 3px 0 #cbd5e1;
+            cursor: pointer;
+            transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.2s ease;
+            z-index: 20;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            border: 2.5px solid #f1f5f9;
+        }
+        .calendar-card:hover {
+            transform: scale(1.06) rotate(-1deg);
+        }
+        .calendar-card:active {
+            transform: scale(0.95);
+        }
+
+        /* Calendar binding rings */
+        .calendar-ring {
+            width: clamp(7px, 1.2vw, 11px);
+            height: clamp(7px, 1.2vw, 11px);
+            background: #1e293b;
+            border-radius: 50%;
+            border: 1.5px solid #cbd5e1;
+            box-shadow: inset 0 1px 2px rgba(0,0,0,0.6);
+        }
+
+        /* Wrong click shake animation */
+        @keyframes shakeError {
+            0%, 100% { transform: translateX(0) rotate(0deg); }
+            20% { transform: translateX(-10px) rotate(-6deg); }
+            40% { transform: translateX(10px) rotate(6deg); }
+            60% { transform: translateX(-7px) rotate(-4deg); }
+            80% { transform: translateX(7px) rotate(4deg); }
+        }
+        .shake-error {
+            animation: shakeError 0.45s ease-in-out;
+            border-color: #ef4444 !important;
+        }
+
+        /* Correct click pop animation */
+        @keyframes popSuccess {
+            0% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.25) rotate(6deg); opacity: 1; }
+            100% { transform: scale(0); opacity: 0; }
+        }
+        .pop-success {
+            animation: popSuccess 0.32s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+            pointer-events: none;
+        }
+
+        /* Floating score feedback */
+        @keyframes floatUp {
+            0% { transform: translate(-50%, 0) scale(0.8); opacity: 1; }
+            50% { transform: translate(-50%, -28px) scale(1.1); opacity: 1; }
+            100% { transform: translate(-50%, -52px) scale(1); opacity: 0; }
+        }
+        .floating-score {
+            position: absolute;
+            z-index: 45;
+            pointer-events: none;
+            animation: floatUp 0.8s ease-out forwards;
+        }
+
+        /* Urgent last 5s pulse */
+        @keyframes urgentPulse {
+            0%, 100% { transform: scale(1); background-color: #dc2626; }
+            50% { transform: scale(1.05); background-color: #991b1b; }
+        }
+        .timer-urgent {
+            animation: urgentPulse 0.6s infinite;
+        }
+
+        /* Range Slider */
+        input[type=range] {
+            -webkit-appearance: none;
+            background: transparent;
+        }
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 5px;
+            cursor: pointer;
+            background: #334155;
+            border-radius: 999px;
+        }
+        input[type=range]::-webkit-slider-thumb {
+            height: 16px;
+            width: 16px;
+            border-radius: 50%;
+            background: #facc15;
+            cursor: pointer;
+            -webkit-appearance: none;
+            margin-top: -5.5px;
+            box-shadow: 0 0 8px rgba(250, 204, 21, 0.8);
+            border: 2px solid #ffffff;
+        }
+    </style>
+</head>
+<body class="w-screen h-[100dvh] flex flex-col bg-slate-950 text-white select-none overflow-hidden">
+
+    <!-- ==================== Portrait Orientation Prompt Overlay ==================== -->
+    <div id="portrait-prompt" class="fixed inset-0 z-[100] bg-slate-950/95 backdrop-blur-md flex-col items-center justify-center p-6 text-center">
+        <div class="w-16 h-16 rounded-2xl bg-amber-400/20 border-2 border-amber-400 flex items-center justify-center text-amber-400 text-3xl mb-4 animate-bounce">
+            <i class="fa-solid fa-mobile-screen-button rotate-90"></i>
+        </div>
+        <h2 class="font-eng text-xl font-bold text-white mb-1">Please Rotate Your Device</h2>
+        <p class="font-zh text-sm text-amber-400 font-bold mb-3">請將手機轉為橫向以獲得最佳遊戲體驗</p>
+        <p class="text-xs text-slate-400 max-w-xs mb-6">This game is designed for landscape view so you can search the playfield comfortably.</p>
+        <button onclick="document.getElementById('portrait-prompt').classList.add('dismissed')" class="px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs border border-slate-600 transition cursor-pointer">
+            Continue Anyway
+        </button>
+    </div>
+
+    <!-- ==================== Clean Top Header (HUD) - Mobile Landscape Ready ==================== -->
+    <header class="h-[clamp(44px,11dvh,72px)] bg-slate-900/95 border-b border-slate-800 px-2 sm:px-4 flex items-center justify-between gap-1.5 sm:gap-3 z-40 shadow-xl shrink-0">
+        
+        <!-- Left: 60s Timer, Round Score & Start/Pause/Reset Controls -->
+        <div class="flex items-center gap-1.5 sm:gap-2 bg-slate-800/90 px-2 py-1 rounded-xl border border-slate-700 shrink-0">
+            <!-- Timer -->
+            <div id="timer-box" class="flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-slate-900 border border-slate-700 transition-all">
+                <i class="fa-solid fa-stopwatch text-amber-400 text-xs sm:text-base"></i>
+                <div class="flex items-baseline gap-1">
+                    <span class="hidden md:inline text-[10px] text-slate-400 font-bold uppercase">Time:</span>
+                    <span id="timer-display" class="font-eng text-sm sm:text-xl font-bold text-white leading-none">60s</span>
+                </div>
+            </div>
+
+            <!-- Current Round Score (Streak Removed) -->
+            <div class="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-slate-900/80 border border-slate-700/70">
+                <span class="text-[10px] text-slate-400 font-bold uppercase">Score:</span>
+                <span id="round-score-display" class="font-eng text-sm sm:text-xl font-bold text-amber-400 leading-none">0</span>
+            </div>
+
+            <!-- Start / Pause & Reset Buttons -->
+            <div class="flex items-center gap-1">
+                <button id="btn-start-pause" onclick="toggleTimer()" class="px-2.5 sm:px-3 py-1 sm:py-1.5 bg-emerald-500 hover:bg-emerald-400 active:scale-95 text-slate-950 font-bold text-xs sm:text-sm rounded-lg shadow flex items-center gap-1 transition cursor-pointer">
+                    <i id="icon-start-pause" class="fa-solid fa-play text-[10px] sm:text-xs"></i>
+                    <span id="text-start-pause">Start</span>
+                </button>
+                <button onclick="resetRound()" title="Reset Round" class="px-2 py-1 sm:py-1.5 bg-slate-700 hover:bg-slate-600 active:scale-95 text-slate-200 rounded-lg text-xs font-bold flex items-center gap-1 transition cursor-pointer">
+                    <i class="fa-solid fa-rotate-right"></i>
+                    <span class="hidden lg:inline">Reset</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Center: Strictly Target English Word + Speaker Pronunciation Button -->
+        <div class="flex items-center gap-2 sm:gap-3 bg-gradient-to-b from-indigo-950 to-slate-900 px-3 sm:px-5 py-1 sm:py-1.5 rounded-xl border-2 border-amber-400/80 shadow-[0_0_20px_rgba(251,191,36,0.2)] shrink-0">
+            <div id="target-word-display" class="font-eng text-[clamp(1.25rem,3.8vw,2.5rem)] font-bold tracking-wide text-white drop-shadow-[0_2px_8px_rgba(255,255,255,0.35)] leading-none">
+                Monday
+            </div>
+            <button onclick="speakTargetWord()" title="Pronounce Word" class="w-7 h-7 sm:w-9 sm:h-9 rounded-lg bg-amber-400 hover:bg-amber-300 active:scale-90 text-slate-950 flex items-center justify-center shadow-md shadow-amber-400/30 transition cursor-pointer shrink-0">
+                <i class="fa-solid fa-volume-high text-xs sm:text-base"></i>
+            </button>
+        </div>
+
+        <!-- Right: Compact Flashlight Size Slider & Lightbulb Toggle -->
+        <div class="flex items-center gap-1.5 sm:gap-2 bg-slate-800/90 px-2.5 py-1 rounded-xl border border-slate-700 shrink-0">
+            <i class="fa-solid fa-wand-magic-sparkles text-yellow-400 text-xs"></i>
+            <div class="flex flex-col w-16 sm:w-24">
+                <div class="flex justify-between text-[9px] text-slate-300 font-bold uppercase leading-none mb-0.5">
+                    <span>Size</span>
+                    <span id="beam-size-label">M</span>
+                </div>
+                <input id="beam-slider" type="range" min="65" max="240" value="125" oninput="updateBeamSize(this.value)">
+            </div>
+            <button id="btn-peek" onclick="togglePeekLight()" title="Toggle Full Light" class="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-300 flex items-center justify-center transition cursor-pointer text-xs sm:text-sm">
+                <i id="icon-peek" class="fa-solid fa-lightbulb"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- ==================== Main Area: Pitch Black Playfield + Compact Team Scoreboard ==================== -->
+    <div class="flex-1 flex overflow-hidden relative min-h-0">
+
+        <!-- Left / Center: Pitch Black Playfield -->
+        <main id="play-area" class="flex-1 relative bg-black overflow-hidden cursor-none touch-none select-none">
+            
+            <!-- Subtle dot grid (visible only inside flashlight beam) -->
+            <div class="absolute inset-0 opacity-20 pointer-events-none" 
+                 style="background-image: radial-gradient(#475569 1.5px, transparent 1.5px); background-size: 32px 32px;">
+            </div>
+
+            <!-- Calendar Cards Container -->
+            <div id="cards-container" class="absolute inset-0"></div>
+
+            <!-- Pitch Black Flashlight Overlay -->
+            <div id="darkness-overlay"></div>
+            <div id="beam-ring"></div>
+
+            <!-- ==================== English Round Summary Modal (No Streak) ==================== -->
+            <div id="summary-modal" class="hidden absolute inset-0 z-50 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-3 cursor-default">
+                <div class="bg-slate-900 border-2 border-amber-400 rounded-2xl max-w-sm w-full p-4 sm:p-5 shadow-[0_0_50px_rgba(251,191,36,0.3)] text-center transform transition-all">
+                    <div class="w-12 h-12 mx-auto bg-amber-400/20 border-2 border-amber-400 rounded-xl flex items-center justify-center text-amber-400 text-2xl mb-2">
+                        <i class="fa-solid fa-trophy"></i>
+                    </div>
+                    <h2 class="text-xl sm:text-2xl font-bold text-white tracking-wide leading-tight">TIME'S UP!</h2>
+                    <p id="summary-group-name" class="text-amber-400 font-bold text-sm sm:text-base mt-0.5">Team 1 Completed</p>
+
+                    <div class="grid grid-cols-2 gap-2.5 my-3.5">
+                        <div class="bg-slate-800/90 p-2.5 rounded-xl border border-slate-700">
+                            <div class="text-[10px] text-slate-400 font-bold uppercase">Cards Found</div>
+                            <div id="summary-found" class="font-eng text-2xl sm:text-3xl font-bold text-emerald-400 mt-0.5">0</div>
+                        </div>
+                        <div class="bg-slate-800/90 p-2.5 rounded-xl border border-slate-700">
+                            <div class="text-[10px] text-slate-400 font-bold uppercase">Round Score</div>
+                            <div id="summary-score" class="font-eng text-2xl sm:text-3xl font-bold text-amber-400 mt-0.5">+0</div>
+                        </div>
+                    </div>
+
+                    <div class="flex gap-2.5">
+                        <button onclick="closeSummaryAndStay()" class="flex-1 py-2 px-3 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs sm:text-sm rounded-xl border border-slate-600 transition cursor-pointer">
+                            Play Again
+                        </button>
+                        <button onclick="nextGroupRound()" class="flex-1 py-2 px-3 bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold text-xs sm:text-sm rounded-xl shadow-lg shadow-amber-400/25 transition cursor-pointer flex items-center justify-center gap-1.5">
+                            <span>Next Team</span>
+                            <i class="fa-solid fa-arrow-right text-xs"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- ==================== Right: Compact 5-Team Scoreboard (Mobile Landscape Friendly) ==================== -->
+        <aside class="w-36 sm:w-44 bg-slate-900 border-l border-slate-800 flex flex-col justify-between p-1.5 sm:p-2 z-40 shrink-0 shadow-2xl min-h-0">
+            <div class="flex flex-col h-full min-h-0">
+                <!-- Compact Header -->
+                <div class="flex items-center justify-between pb-1 mb-1 border-b border-slate-800 shrink-0">
+                    <div class="flex items-center gap-1">
+                        <i class="fa-solid fa-trophy text-amber-400 text-[10px]"></i>
+                        <h2 class="font-bold text-[11px] uppercase tracking-wider text-white">Teams</h2>
+                    </div>
+                    <button onclick="resetAllGroupScores()" title="Reset All Team Scores" class="text-[9px] text-slate-400 hover:text-rose-400 transition px-1.5 py-0.5 rounded bg-slate-800 hover:bg-slate-700 cursor-pointer font-bold">
+                        Reset All
+                    </button>
+                </div>
+
+                <!-- 5 Compact Team Cards (Flexibly fits 320px+ landscape height) -->
+                <div id="groups-container" class="flex-1 flex flex-col justify-between gap-1 sm:gap-1.5 min-h-0 overflow-y-auto">
+                    <!-- Dynamically rendered Team 1 ~ Team 5 -->
+                </div>
+            </div>
+        </aside>
+
+    </div>
+
+    <!-- ==================== Game Logic JavaScript ==================== -->
+    <script>
+        // 1. Days of the Week Data (Traditional Chinese Tear-Off Calendar Cards)
+        const DAYS_DATA = [
+            { eng: 'Monday',    zh: '星期一', shortZh: '週一', color: 'bg-red-600',    border: 'border-red-700' },
+            { eng: 'Tuesday',   zh: '星期二', shortZh: '週二', color: 'bg-blue-600',   border: 'border-blue-700' },
+            { eng: 'Wednesday', zh: '星期三', shortZh: '週三', color: 'bg-red-600',    border: 'border-red-700' },
+            { eng: 'Thursday',  zh: '星期四', shortZh: '週四', color: 'bg-blue-600',   border: 'border-blue-700' },
+            { eng: 'Friday',    zh: '星期五', shortZh: '週五', color: 'bg-red-600',    border: 'border-red-700' },
+            { eng: 'Saturday',  zh: '星期六', shortZh: '週六', color: 'bg-blue-600',   border: 'border-blue-700' },
+            { eng: 'Sunday',    zh: '星期日', shortZh: '週日', color: 'bg-red-600',    border: 'border-red-700' }
+        ];
+
+        // 2. 5-Team Scoreboard State
+        const groups = [
+            { id: 0, name: 'Team 1', score: 0, ring: 'ring-rose-400',    badgeBg: 'bg-rose-500' },
+            { id: 1, name: 'Team 2', score: 0, ring: 'ring-amber-400',   badgeBg: 'bg-amber-500' },
+            { id: 2, name: 'Team 3', score: 0, ring: 'ring-emerald-400', badgeBg: 'bg-emerald-500' },
+            { id: 3, name: 'Team 4', score: 0, ring: 'ring-sky-400',     badgeBg: 'bg-sky-500' },
+            { id: 4, name: 'Team 5', score: 0, ring: 'ring-purple-400',  badgeBg: 'bg-purple-500' }
+        ];
+
+        // 3. Game State (Streak Removed)
+        let activeGroupIndex = 0;
+        let timeLeft = 60;
+        let timerInterval = null;
+        let isPlaying = false;
+        let roundScore = 0;
+        let wordsFoundInRound = 0;
+        let remainingDaysPool = [];
+        let currentTarget = null;
+        let isPeekLightOn = false;
+
+        // Web Audio API Sound Effects
+        let audioCtx = null;
+        function getAudioContext() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+            return audioCtx;
+        }
+
+        function playSound(type) {
+            try {
+                const ctx = getAudioContext();
+                const now = ctx.currentTime;
+
+                if (type === 'correct') {
+                    const osc = ctx.createOscillator();
+                    const gain = ctx.createGain();
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(587.33, now);
+                    osc.frequency.setValueAtTime(880, now + 0.09);
+                    gain.gain.setValueAtTime(0.25, now);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+                    osc.connect(gain);
+                    gain.connect(ctx.destination);
+                    osc.start(now);
+                    osc.stop(now + 0.35);
+                } else if (type === 'waveClear') {
+                    const notes = [523.25, 659.25, 783.99, 1046.50];
+                    notes.forEach((freq, idx) => {
+                        const osc = ctx.createOscillator();
+                        const gain = ctx.createGain();
+                        osc.type = 'sine';
+                        osc.frequency.setValueAtTime(freq, now + idx * 0.07);
+                        gain.gain.setValueAtTime(0.22, now + idx * 0.07);
+                        gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.07 + 0.25);
+                        osc.connect(gain);
+                        gain.connect(ctx.destination);
+                        osc.start(now + idx * 0.07);
+                        osc.stop(now + idx * 0.07 + 0.25);
+                    });
+                } else if (type === 'wrong') {
+                    const osc = ctx.createOscillator();
+                    const gain = ctx.createGain();
+                    osc.type = 'sawtooth';
+                    osc.frequency.setValueAtTime(160, now);
+                    osc.frequency.linearRampToValueAtTime(115, now + 0.22);
+                    gain.gain.setValueAtTime(0.15, now);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+                    osc.connect(gain);
+                    gain.connect(ctx.destination);
+                    osc.start(now);
+                    osc.stop(now + 0.25);
+                } else if (type === 'tick') {
+                    const osc = ctx.createOscillator();
+                    const gain = ctx.createGain();
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(800, now);
+                    gain.gain.setValueAtTime(0.12, now);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.06);
+                    osc.connect(gain);
+                    gain.connect(ctx.destination);
+                    osc.start(now);
+                    osc.stop(now + 0.06);
+                } else if (type === 'finish') {
+                    const chord = [440, 554.37, 659.25, 880];
+                    chord.forEach((freq, i) => {
+                        const osc = ctx.createOscillator();
+                        const gain = ctx.createGain();
+                        osc.type = 'triangle';
+                        osc.frequency.setValueAtTime(freq, now + i * 0.06);
+                        gain.gain.setValueAtTime(0.2, now + i * 0.06);
+                        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.9);
+                        osc.connect(gain);
+                        gain.connect(ctx.destination);
+                        osc.start(now + i * 0.06);
+                        osc.stop(now + 0.9);
+                    });
+                }
+            } catch (e) {}
+        }
+
+        // 4. Web Speech API Pronunciation (en-US)
+        function speakTargetWord() {
+            if (!currentTarget) return;
+            if (!('speechSynthesis' in window)) return;
+            try {
+                window.speechSynthesis.cancel();
+                const utter = new SpeechSynthesisUtterance(currentTarget.eng);
+                utter.lang = 'en-US';
+                utter.rate = 0.9;
+                utter.pitch = 1.05;
+                window.speechSynthesis.speak(utter);
+            } catch (e) {}
+        }
+
+        // 5. Flashlight Tracking (Pointer & Touch Optimized for Mobile Landscape)
+        const playArea = document.getElementById('play-area');
+        function moveFlashlight(clientX, clientY) {
+            const rect = playArea.getBoundingClientRect();
+            const x = clientX - rect.left;
+            const y = clientY - rect.top;
+            playArea.style.setProperty('--mouse-x', `${x}px`);
+            playArea.style.setProperty('--mouse-y', `${y}px`);
+        }
+
+        playArea.addEventListener('pointerdown', (e) => {
+            moveFlashlight(e.clientX, e.clientY);
+        });
+
+        playArea.addEventListener('pointermove', (e) => {
+            moveFlashlight(e.clientX, e.clientY);
+        });
+
+        playArea.addEventListener('touchstart', (e) => {
+            if (e.touches.length > 0) {
+                moveFlashlight(e.touches[0].clientX, e.touches[0].clientY);
+            }
+        }, { passive: true });
+
+        playArea.addEventListener('touchmove', (e) => {
+            if (e.touches.length > 0) {
+                moveFlashlight(e.touches[0].clientX, e.touches[0].clientY);
+            }
+        }, { passive: true });
+
+        // Flashlight Beam Size Adjustment
+        function updateBeamSize(val) {
+            playArea.style.setProperty('--beam-size', `${val}px`);
+            const label = document.getElementById('beam-size-label');
+            if (val < 105) label.textContent = 'S';
+            else if (val < 170) label.textContent = 'M';
+            else label.textContent = 'L';
+        }
+
+        // Teacher Lightbulb Toggle
+        function togglePeekLight() {
+            isPeekLightOn = !isPeekLightOn;
+            const overlay = document.getElementById('darkness-overlay');
+            const btn = document.getElementById('btn-peek');
+            if (isPeekLightOn) {
+                overlay.style.opacity = '0.15';
+                btn.classList.replace('bg-slate-700', 'bg-amber-400');
+                btn.classList.replace('text-slate-300', 'text-slate-950');
+            } else {
+                overlay.style.opacity = '1';
+                btn.classList.replace('bg-amber-400', 'bg-slate-700');
+                btn.classList.replace('text-slate-950', 'text-slate-300');
+            }
+        }
+
+        // 6. Responsive Card Dimensions & Non-Overlapping Spawner
+        function getResponsiveCardDimensions(rect) {
+            // Scale card size dynamically for small mobile landscape screens vs desktop
+            const minDim = Math.min(rect.width, rect.height);
+            const cardW = Math.round(Math.max(76, Math.min(128, minDim * 0.24)));
+            const cardH = Math.round(cardW * 1.12);
+            playArea.style.setProperty('--card-w', `${cardW}px`);
+            playArea.style.setProperty('--card-h', `${cardH}px`);
+            return { cardW, cardH };
+        }
+
+        function spawnCalendarCards() {
+            const container = document.getElementById('cards-container');
+            container.innerHTML = '';
+
+            const rect = playArea.getBoundingClientRect();
+            const { cardW, cardH } = getResponsiveCardDimensions(rect);
+            const padding = Math.max(10, Math.min(22, Math.round(rect.height * 0.04)));
+
+            const maxW = Math.max(80, rect.width - cardW - padding * 2);
+            const maxH = Math.max(60, rect.height - cardH - padding * 2);
+
+            const placedPositions = [];
+            const shuffledDays = [...DAYS_DATA].sort(() => Math.random() - 0.5);
+
+            shuffledDays.forEach((day) => {
+                let bestX = padding;
+                let bestY = padding;
+                let maxMinDist = -1;
+
+                for (let attempt = 0; attempt < 90; attempt++) {
+                    const candidateX = padding + Math.random() * maxW;
+                    const candidateY = padding + Math.random() * maxH;
+
+                    let overlapping = false;
+                    let closestDist = Infinity;
+
+                    for (const pos of placedPositions) {
+                        const dx = candidateX - pos.x;
+                        const dy = candidateY - pos.y;
+                        const dist = Math.hypot(dx, dy);
+                        if (dist < closestDist) closestDist = dist;
+
+                        if (Math.abs(dx) < cardW + 10 && Math.abs(dy) < cardH + 10) {
+                            overlapping = true;
+                        }
+                    }
+
+                    if (!overlapping) {
+                        bestX = candidateX;
+                        bestY = candidateY;
+                        break;
+                    }
+
+                    if (closestDist > maxMinDist) {
+                        maxMinDist = closestDist;
+                        bestX = candidateX;
+                        bestY = candidateY;
+                    }
+                }
+
+                placedPositions.push({ x: bestX, y: bestY });
+
+                const card = document.createElement('div');
+                card.className = 'calendar-card select-none';
+                card.style.left = `${bestX}px`;
+                card.style.top = `${bestY}px`;
+                card.dataset.eng = day.eng;
+
+                card.innerHTML = `
+                    <!-- Tear-off Calendar Header (Red/Blue) -->
+                    <div class="${day.color} h-[24%] px-2 flex items-center justify-between border-b-2 ${day.border}">
+                        <div class="calendar-ring"></div>
+                        <div class="w-6 h-1 rounded-full bg-white/40"></div>
+                        <div class="calendar-ring"></div>
+                    </div>
+                    <!-- Traditional Chinese Calendar Page Content -->
+                    <div class="font-zh flex-1 flex flex-col items-center justify-center bg-gradient-to-b from-white to-slate-100 px-1 py-1 relative">
+                        <div class="text-[clamp(0.95rem,2.2vw,1.5rem)] font-black text-slate-800 tracking-tight leading-tight">${day.zh}</div>
+                        <div class="mt-1 px-2 py-0.5 rounded-full bg-slate-200/90 text-slate-600 font-bold text-[clamp(0.6rem,1.2vw,0.75rem)] leading-none">
+                            ${day.shortZh}
+                        </div>
+                    </div>
+                `;
+
+                card.addEventListener('pointerdown', (e) => {
+                    e.stopPropagation();
+                    moveFlashlight(e.clientX, e.clientY);
+                    handleCardClick(card, day, e.clientX, e.clientY);
+                });
+
+                container.appendChild(card);
+            });
+        }
+
+        // 7. Pick Next Target Word (Endless 60s Mode)
+        function pickNextTargetWord(speakNow = true) {
+            if (remainingDaysPool.length === 0) {
+                remainingDaysPool = [...DAYS_DATA];
+                playSound('waveClear');
+                spawnCalendarCards();
+            }
+
+            const randIdx = Math.floor(Math.random() * remainingDaysPool.length);
+            currentTarget = remainingDaysPool[randIdx];
+
+            const targetEl = document.getElementById('target-word-display');
+            targetEl.textContent = currentTarget.eng;
+            targetEl.classList.remove('scale-110', 'text-amber-300');
+            void targetEl.offsetWidth;
+            targetEl.classList.add('scale-110', 'text-amber-300');
+            setTimeout(() => {
+                targetEl.classList.remove('scale-110', 'text-amber-300');
+            }, 220);
+
+            if (speakNow) {
+                speakTargetWord();
+            }
+        }
+
+        // 8. Handle Calendar Card Click (Flat +10 Points, Live Team Update, No Streak)
+        function handleCardClick(cardEl, clickedDay, clientX, clientY) {
+            if (!isPlaying && timeLeft === 60) {
+                startTimer();
+            } else if (!isPlaying) {
+                return;
+            }
+
+            if (!currentTarget) return;
+
+            if (clickedDay.eng === currentTarget.eng) {
+                wordsFoundInRound++;
+                const earned = 10;
+                roundScore += earned;
+                groups[activeGroupIndex].score += earned;
+
+                playSound('correct');
+                showFloatingFeedback(clientX, clientY, `+${earned}`, true);
+
+                remainingDaysPool = remainingDaysPool.filter(d => d.eng !== clickedDay.eng);
+                cardEl.classList.add('pop-success');
+
+                updateRoundStatsUI();
+                renderScoreboard();
+
+                setTimeout(() => {
+                    if (cardEl && cardEl.parentNode) {
+                        cardEl.remove();
+                    }
+                    pickNextTargetWord(true);
+                }, 200);
+
+            } else {
+                // Wrong click: no point deduction, shake card
+                playSound('wrong');
+                showFloatingFeedback(clientX, clientY, `Try Again!`, false);
+
+                cardEl.classList.remove('shake-error');
+                void cardEl.offsetWidth;
+                cardEl.classList.add('shake-error');
+            }
+        }
+
+        function showFloatingFeedback(clientX, clientY, text, isPositive) {
+            const rect = playArea.getBoundingClientRect();
+            const floatEl = document.createElement('div');
+            floatEl.className = `floating-score font-eng font-bold text-lg sm:text-2xl px-2.5 py-0.5 rounded-full shadow-lg ${
+                isPositive 
+                    ? 'bg-amber-400 text-slate-950 border-2 border-white' 
+                    : 'bg-rose-600/90 text-white border border-rose-300 text-xs sm:text-sm'
+            }`;
+            floatEl.style.left = `${clientX - rect.left}px`;
+            floatEl.style.top = `${clientY - rect.top - 16}px`;
+            floatEl.textContent = text;
+            playArea.appendChild(floatEl);
+
+            setTimeout(() => floatEl.remove(), 800);
+        }
+
+        function updateRoundStatsUI() {
+            document.getElementById('round-score-display').textContent = roundScore;
+        }
+
+        // 9. 60-Second Timer Controls
+        function toggleTimer() {
+            if (isPlaying) {
+                pauseTimer();
+            } else {
+                startTimer();
+            }
+        }
+
+        function startTimer() {
+            if (timeLeft <= 0) {
+                resetRound();
+            }
+            isPlaying = true;
+            updateStartPauseButtonUI();
+            speakTargetWord();
+
+            clearInterval(timerInterval);
+            timerInterval = setInterval(() => {
+                timeLeft--;
+                updateTimerUI();
+
+                if (timeLeft <= 5 && timeLeft > 0) {
+                    playSound('tick');
+                }
+
+                if (timeLeft <= 0) {
+                    finishRound();
+                }
+            }, 1000);
+        }
+
+        function pauseTimer() {
+            isPlaying = false;
+            clearInterval(timerInterval);
+            updateStartPauseButtonUI();
+        }
+
+        function resetRound() {
+            pauseTimer();
+            timeLeft = 60;
+            roundScore = 0;
+            wordsFoundInRound = 0;
+            remainingDaysPool = [...DAYS_DATA];
+
+            document.getElementById('summary-modal').classList.add('hidden');
+            updateTimerUI();
+            updateRoundStatsUI();
+            spawnCalendarCards();
+            pickNextTargetWord(false);
+        }
+
+        function updateTimerUI() {
+            const display = document.getElementById('timer-display');
+            const box = document.getElementById('timer-box');
+            display.textContent = `${timeLeft}s`;
+
+            if (timeLeft <= 5 && timeLeft > 0) {
+                box.classList.add('timer-urgent');
+            } else {
+                box.classList.remove('timer-urgent');
+            }
+        }
+
+        function updateStartPauseButtonUI() {
+            const btn = document.getElementById('btn-start-pause');
+            const icon = document.getElementById('icon-start-pause');
+            const text = document.getElementById('text-start-pause');
+
+            if (isPlaying) {
+                btn.className = 'px-2.5 sm:px-3 py-1 sm:py-1.5 bg-amber-400 hover:bg-amber-300 active:scale-95 text-slate-950 font-bold text-xs sm:text-sm rounded-lg shadow flex items-center gap-1 transition cursor-pointer';
+                icon.className = 'fa-solid fa-pause text-[10px] sm:text-xs';
+                text.textContent = 'Pause';
+            } else {
+                btn.className = 'px-2.5 sm:px-3 py-1 sm:py-1.5 bg-emerald-500 hover:bg-emerald-400 active:scale-95 text-slate-950 font-bold text-xs sm:text-sm rounded-lg shadow flex items-center gap-1 transition cursor-pointer';
+                icon.className = 'fa-solid fa-play text-[10px] sm:text-xs';
+                text.textContent = timeLeft < 60 && timeLeft > 0 ? 'Resume' : 'Start';
+            }
+        }
+
+        // 10. Finish 60s Round & Show English Summary Modal
+        function finishRound() {
+            pauseTimer();
+            playSound('finish');
+
+            const activeGroup = groups[activeGroupIndex];
+            document.getElementById('summary-group-name').textContent = `${activeGroup.name} Completed!`;
+            document.getElementById('summary-found').textContent = wordsFoundInRound;
+            document.getElementById('summary-score').textContent = `+${roundScore}`;
+
+            document.getElementById('summary-modal').classList.remove('hidden');
+        }
+
+        function closeSummaryAndStay() {
+            resetRound();
+        }
+
+        function nextGroupRound() {
+            activeGroupIndex = (activeGroupIndex + 1) % groups.length;
+            renderScoreboard();
+            resetRound();
+        }
+
+        // 11. Compact 5-Team Scoreboard Rendering & Manual Adjustments (-20, -10, +10)
+        function selectGroup(index) {
+            activeGroupIndex = index;
+            renderScoreboard();
+        }
+
+        function adjustGroupScore(index, delta, event) {
+            if (event) event.stopPropagation();
+            groups[index].score = groups[index].score + delta;
+            if (delta > 0) playSound('correct');
+            renderScoreboard();
+        }
+
+        function resetAllGroupScores() {
+            groups.forEach(g => g.score = 0);
+            renderScoreboard();
+        }
+
+        function renderScoreboard() {
+            const container = document.getElementById('groups-container');
+            container.innerHTML = '';
+
+            const highestScore = Math.max(...groups.map(g => g.score));
+
+            groups.forEach((group, idx) => {
+                const isActive = idx === activeGroupIndex;
+                const isLeader = highestScore > 0 && group.score === highestScore;
+
+                const card = document.createElement('div');
+                card.onclick = () => selectGroup(idx);
+                card.className = `px-2 py-1 rounded-xl border transition-all cursor-pointer flex flex-col justify-center flex-1 min-h-0 ${
+                    isActive
+                        ? `bg-slate-800 border-amber-400 ring-1 ${group.ring} shadow-md`
+                        : 'bg-slate-800/50 border-slate-700/80 hover:bg-slate-800/80'
+                }`;
+
+                card.innerHTML = `
+                    <div class="flex items-center justify-between leading-none">
+                        <div class="flex items-center gap-1">
+                            <span class="w-4 h-4 rounded ${group.badgeBg} text-white font-eng font-bold text-[10px] flex items-center justify-center shrink-0">
+                                ${idx + 1}
+                            </span>
+                            <span class="font-bold text-white text-[11px] sm:text-xs truncate">${group.name}</span>
+                            ${isLeader ? '<i class="fa-solid fa-crown text-amber-400 text-[9px]" title="Leader"></i>' : ''}
+                        </div>
+                        <span class="font-eng text-sm sm:text-base font-bold ${isActive ? 'text-amber-400' : 'text-white'} leading-none">${group.score}</span>
+                    </div>
+
+                    <!-- Manual Score Buttons (-20, -10, +10) -->
+                    <div class="flex items-center justify-between gap-1 mt-1 pt-1 border-t border-slate-700/60">
+                        <button onclick="adjustGroupScore(${idx}, -20, event)" class="flex-1 py-0.5 rounded bg-rose-500/20 hover:bg-rose-500 active:scale-95 text-rose-300 hover:text-white border border-rose-500/30 font-eng font-bold text-[10px] leading-tight transition cursor-pointer">
+                            -20
+                        </button>
+                        <button onclick="adjustGroupScore(${idx}, -10, event)" class="flex-1 py-0.5 rounded bg-rose-500/20 hover:bg-rose-500 active:scale-95 text-rose-300 hover:text-white border border-rose-500/30 font-eng font-bold text-[10px] leading-tight transition cursor-pointer">
+                            -10
+                        </button>
+                        <button onclick="adjustGroupScore(${idx}, 10, event)" class="flex-1 py-0.5 rounded bg-emerald-500/20 hover:bg-emerald-500 active:scale-95 text-emerald-300 hover:text-slate-950 border border-emerald-500/30 font-eng font-bold text-[10px] leading-tight transition cursor-pointer">
+                            +10
+                        </button>
+                    </div>
+                `;
+
+                container.appendChild(card);
+            });
+        }
+
+        let resizeTimeout = null;
+        window.addEventListener('resize', () => {
+            clearTimeout(resizeTimeout);
+            resizeTimeout = setTimeout(() => {
+                spawnCalendarCards();
+            }, 200);
+        });
+
+        window.onload = function () {
+            renderScoreboard();
+            resetRound();
+            const rect = playArea.getBoundingClientRect();
+            moveFlashlight(rect.left + rect.width / 2, rect.top + rect.height / 2);
+        };
+    </script>
+</body>
+</html>
